@@ -1,11 +1,132 @@
-import React from 'react'
+import React, { useContext, useEffect, useRef, useState } from 'react'
 import './messenger.css'
 import Topbar from '../../components/topbar/Topbar'
 import Conversation from '../../components/conversations/Conversation'
 import Message from '../../components/message/Message'
 import ChatOnline from '../../components/chatOnline/ChatOnline'
+import { AuthContext } from '../../context/AuthContext'
+import axios from 'axios'
+import { io } from 'socket.io-client'
 
 function Messenger() {
+  const [conversations, setConversations] = useState([])
+  const [currentChat, setCurrentChat] = useState(null)
+  const [messages, setMessages] = useState([])
+  const [newMessage, setNewMessage] = useState('')
+  const [arrivalMessage, setArrivalMessage] = useState(null)
+  const [onlineUsers, setOnlineUsers] = useState([])
+  // const [socket, setSocket] = useState(null)
+  const socket = useRef()
+  const { user } = useContext(AuthContext)
+  const scrollRef = useRef()
+
+  useEffect(() => {
+    socket.current = io('ws://localhost:8900')
+    //
+    socket.current.on('getMessage', (data) => {
+      setArrivalMessage({
+        sender: data.senderId,
+        text: data.text,
+        createdAt: Date.now(),
+      })
+    })
+  }, [])
+
+  useEffect(() => {
+    // Check arrival messages
+    arrivalMessage &&
+      currentChat?.members.includes(arrivalMessage.sender) &&
+      setMessages((prev) => [...prev, arrivalMessage])
+  }, [arrivalMessage, currentChat])
+
+  useEffect(() => {
+    // To send something to socket server use socket.emit
+    socket.current.emit('addUser', user._id)
+    // Taking from the server
+    socket.current.on('getUsers', (users) => {
+      // console.log(users)
+      setOnlineUsers(
+        user.followings.filter((f) => users.some((u) => u.userId === f))
+      )
+      // setOnlineUsers(users)
+    })
+  }, [user])
+
+  // console.log('user: ', user)
+
+  // useEffect(() => {
+  //   setSocket(io('ws://localhost:8900'))
+  // }, [])
+
+  // useEffect(() => {
+  //   // To take something from the server we use socket.on
+  //   socket?.on('welcome', (message) => {
+  //     console.log(message)
+  //   })
+  // }, [socket])
+
+  console.log(socket)
+
+  useEffect(() => {
+    const getConversations = async () => {
+      try {
+        const res = await axios.get('/conversations/' + user._id)
+        // console.log(res)
+        setConversations(res.data)
+      } catch (err) {
+        console.log(err)
+      }
+    }
+    getConversations()
+  }, [user._id])
+
+  // console.log(currentChat)
+
+  useEffect(() => {
+    const getMessages = async () => {
+      try {
+        const res = await axios.get('/messages/' + currentChat?._id)
+        setMessages(res.data)
+      } catch (err) {
+        console.log(err)
+      }
+    }
+    getMessages()
+  }, [currentChat])
+
+  // console.log(messages)
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    const message = {
+      sender: user._id,
+      text: newMessage,
+      conversationId: currentChat._id,
+    }
+
+    // send private message
+    const receiverId = currentChat.members.find((member) => member !== user._id)
+
+    socket.current.emit('sendMessage', {
+      senderId: user._id,
+      receiverId,
+      text: newMessage,
+    })
+    //
+
+    try {
+      const res = await axios.post('/messages', message)
+      setMessages([...messages, res.data])
+      setNewMessage('')
+    } catch (err) {
+      console.log(err)
+    }
+  }
+
+  useEffect(() => {
+    scrollRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
+
   return (
     <>
       <Topbar />
@@ -13,40 +134,54 @@ function Messenger() {
         <div className='chatMenu'>
           <div className='chatMenuWrapper'>
             <input placeholder='Search for friends' className='chatMenuInput' />
-            <Conversation />
-            <Conversation />
-            <Conversation />
-            <Conversation />
+            {conversations.map((c) => (
+              <div key={c._id} onClick={() => setCurrentChat(c)}>
+                <Conversation conversation={c} currentUser={user} />
+              </div>
+            ))}
           </div>
         </div>
         <div className='chatBox'>
           <div className='chatBoxWrapper'>
-            <div className='chatBoxTop'>
-              <Message />
-              <Message own={true} />
-              <Message />
-              <Message />
-              <Message />
-              <Message />
-              <Message />
-              <Message />
-              <Message />
-              <Message />
-              <Message />
-              <Message />
-            </div>
-            <div className='chatBoxBottom'>
-              <textarea
-                className='chatMessageInput'
-                placeholder='write something...'
-              ></textarea>
-              <button className='chatSubmitButton'>Send</button>
-            </div>
+            {currentChat ? (
+              <>
+                <div className='chatBoxTop'>
+                  {messages.map((m) => (
+                    // if m.sender === user._id it means he is the owner of this message
+                    // => it will return true in this case, else false (not the owner)
+                    <div key={m._id} ref={scrollRef}>
+                      <Message message={m} own={m.sender === user._id} />
+                    </div>
+                  ))}
+
+                  {/* <Message own={true} /> */}
+                </div>
+                <div className='chatBoxBottom'>
+                  <textarea
+                    className='chatMessageInput'
+                    placeholder='write something...'
+                    onChange={(e) => setNewMessage(e.target.value)}
+                    value={newMessage}
+                  ></textarea>
+                  <button className='chatSubmitButton' onClick={handleSubmit}>
+                    Send
+                  </button>
+                </div>{' '}
+              </>
+            ) : (
+              <span className='noConversationText'>
+                Open a conversation to start a chat.
+              </span>
+            )}
           </div>
         </div>
         <div className='chatOnline'>
           <div className='chatOnlineWrapper'>
-            <ChatOnline />
+            <ChatOnline
+              onlineUsers={onlineUsers}
+              currentId={user._id}
+              setCurrentChat={setCurrentChat}
+            />
           </div>
         </div>
       </div>

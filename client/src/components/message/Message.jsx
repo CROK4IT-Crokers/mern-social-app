@@ -1,7 +1,9 @@
 import React from 'react'
 import './message.css'
+import { format } from 'timeago.js'
 
-function Message({ own }) {
+function Message({ message, own }) {
+  // console.log('message: ', message)
   return (
     <div className={own ? 'message own' : 'message'}>
       <div className='messageTop'>
@@ -11,11 +13,9 @@ function Message({ own }) {
           src='http://www.jquery-az.com/html/images/banana.jpg'
           alt=''
         />
-        <p className='messageText'>
-          Lorem ipsum dolor sit, amet consectetur adipisicing elit.
-        </p>
+        <p className='messageText'>{message?.text}</p>
       </div>
-      <div className='messageBottom'>1 hour ago</div>
+      <div className='messageBottom'>{format(message?.createdAt)}</div>
     </div>
   )
 }
